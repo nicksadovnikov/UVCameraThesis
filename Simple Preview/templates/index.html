@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Focus Preview</title>
+    <style>
+        body {
+            text-align: center;
+            background-color: #121212;
+            color: #f0f0f0;
+            font-family: Arial, sans-serif;
+        }
+        img {
+            margin-top: 20px;
+            width: 90%;
+            max-width: 800px;
+            border: 2px solid #00ff99;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Live Camera Focus Preview</h1>
+    <p>Use this to manually adjust your lens focus.</p>
+    <img src="{{ url_for('video_feed') }}">
+</body>
+</html>
