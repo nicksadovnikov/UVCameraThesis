@@ -1,7 +1,29 @@
-from flask import Flask, Response, render_template
+from flask import Flask, render_template, Response
 import subprocess
+import cv2
+import numpy as np
 
 app = Flask(__name__)
+
+def generate_frames():
+    while True:
+        # Capture one frame from libcamera
+        result = subprocess.run(
+            ["libcamera-jpeg", "-n", "-o", "-", "--width", "640", "--height", "480"],
+            stdout=subprocess.PIPE
+        )
+
+        # Convert JPEG bytes to OpenCV frame
+        jpg_data = result.stdout
+        frame = cv2.imdecode(np.frombuffer(jpg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+        # Re-encode to JPEG (in case modifications are needed)
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame_bytes = buffer.tobytes()
+
+        # Yield MJPEG-compatible chunk
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
 @app.route('/')
 def index():
@@ -9,32 +31,8 @@ def index():
 
 @app.route('/video_feed')
 def video_feed():
-    # Launch libcamera-vid as a subprocess and stream MJPEG
-    cmd = [
-        'libcamera-vid',
-        '-t', '0',                    # unlimited time
-        '--inline',                  # required for MJPEG streaming
-        '--width', '640',
-        '--height', '480',
-        '--codec', 'mjpeg',
-        '-o', '-'                    # output to stdout
-    ]
-
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-
-    def generate():
-        try:
-            while True:
-                chunk = process.stdout.read(1024)
-                if not chunk:
-                    break
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + chunk + b'\r\n')
-        finally:
-            process.terminate()
-
-    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(generate_frames(),
+                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
-
