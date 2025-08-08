@@ -1,26 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Live Focus Preview</title>
+    <title>Live Camera Feed</title>
     <style>
         body {
-            background-color: #111;
-            color: white;
+            background-color: #121212;
+            color: #fff;
             text-align: center;
             font-family: Arial;
         }
         img {
             margin-top: 20px;
-            width: 90%;
-            max-width: 800px;
             border: 2px solid #00ff99;
             border-radius: 10px;
+            max-width: 90%;
         }
     </style>
 </head>
 <body>
-    <h1>Live Camera Focus Preview</h1>
-    <p>Adjust your lens for a sharp image</p>
+    <h1>Live Camera Preview</h1>
     <img src="{{ url_for('video_feed') }}" />
 </body>
 </html>

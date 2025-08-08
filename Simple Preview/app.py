@@ -1,27 +1,21 @@
 from flask import Flask, render_template, Response
-import subprocess
+from picamera2 import Picamera2
 import cv2
-import numpy as np
 
 app = Flask(__name__)
 
+# Initialize the camera
+picam2 = Picamera2()
+picam2.configure(picam2.create_video_configuration(main={"size": (640, 480)}))
+picam2.start()
+
 def generate_frames():
     while True:
-        # Capture one frame from libcamera
-        result = subprocess.run(
-            ["libcamera-jpeg", "-n", "-o", "-", "--width", "640", "--height", "480"],
-            stdout=subprocess.PIPE
-        )
-
-        # Convert JPEG bytes to OpenCV frame
-        jpg_data = result.stdout
-        frame = cv2.imdecode(np.frombuffer(jpg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
-
-        # Re-encode to JPEG (in case modifications are needed)
+        frame = picam2.capture_array()
         ret, buffer = cv2.imencode('.jpg', frame)
+        if not ret:
+            continue
         frame_bytes = buffer.tobytes()
-
-        # Yield MJPEG-compatible chunk
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
