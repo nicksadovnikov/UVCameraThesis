@@ -14,7 +14,6 @@ BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def get_timestamped_dir():
-    """Create a timestamped directory for this capture session."""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_dir = BASE_DIR / timestamp
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -22,10 +21,6 @@ def get_timestamped_dir():
 
 
 def capture_images(shutter_us, frame_count, session_dir):
-    """
-    Captures a number of frames using libcamera-still with RAW output.
-    Saves into a timestamped session directory.
-    """
     for i in range(frame_count):
         filename = f"frame_{i:03d}.jpg"
         filepath = session_dir / filename
@@ -41,18 +36,13 @@ def capture_images(shutter_us, frame_count, session_dir):
 
 
 def extract_blue_channel(image_path):
-    """Extracts the blue channel from a JPG image."""
     img = cv2.imread(str(image_path))
     if img is None:
         raise ValueError(f"Could not read image: {image_path}")
-    return img[:, :, 0]  # Blue channel
+    return img[:, :, 0]
 
 
 def stack_images(session_dir, method="average"):
-    """
-    Stacks the blue channels of all .jpg images in the session directory.
-    Saves final image as stacked_result.png.
-    """
     images = []
     for img_file in sorted(session_dir.glob("frame_*.jpg")):
         blue = extract_blue_channel(img_file)
@@ -69,8 +59,6 @@ def stack_images(session_dir, method="average"):
         raise ValueError("Invalid stacking method.")
 
     stacked = np.clip(stacked, 0, 255).astype(np.uint8)
-
-    # Apply CLAHE for contrast enhancement
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(stacked)
 
@@ -96,15 +84,18 @@ def capture():
     capture_images(shutter_us, frame_count, session_dir)
     result_path = stack_images(session_dir, method)
 
-    return render_template("result.html", result_image=str(result_path.relative_to("static")), session_dir=str(session_dir.relative_to("static")))
+    rel_result = result_path.relative_to("static")
+    rel_dir = session_dir.relative_to("static")
+
+    return render_template("result.html", result_image=str(rel_result), session_dir=str(rel_dir))
 
 
 @app.route("/download/<path:session_dir>")
 def download(session_dir):
-    zip_path = f"{session_dir}.zip"
     abs_dir = BASE_DIR / session_dir
+    zip_path = abs_dir.with_suffix(".zip")
     shutil.make_archive(str(abs_dir), 'zip', str(abs_dir))
-    return send_file(f"static/captures/{zip_path}", as_attachment=True)
+    return send_file(zip_path, as_attachment=True)
 
 
 if __name__ == "__main__":
