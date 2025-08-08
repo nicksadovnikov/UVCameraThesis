@@ -1,5 +1,3 @@
-# File: app.py
-
 import os
 import cv2
 import numpy as np
@@ -7,23 +5,30 @@ from flask import Flask, render_template, request, send_file
 from datetime import datetime
 import subprocess
 from pathlib import Path
+import shutil
 
 app = Flask(__name__)
 
-# Directory to store captured and processed images
-CAPTURE_DIR = Path("static/captures")
-PROCESSED_IMAGE = CAPTURE_DIR / "stacked_result.png"
-CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
+BASE_DIR = Path("static/captures")
+BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def capture_images(shutter_us, frame_count):
+def get_timestamped_dir():
+    """Create a timestamped directory for this capture session."""
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    session_dir = BASE_DIR / timestamp
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return session_dir
+
+
+def capture_images(shutter_us, frame_count, session_dir):
     """
     Captures a number of frames using libcamera-still with RAW output.
-    Each frame is saved as both .jpg and .raw in the capture directory.
+    Saves into a timestamped session directory.
     """
     for i in range(frame_count):
         filename = f"frame_{i:03d}.jpg"
-        filepath = CAPTURE_DIR / filename
+        filepath = session_dir / filename
         cmd = [
             "libcamera-still",
             f"--shutter", str(shutter_us),
@@ -43,13 +48,13 @@ def extract_blue_channel(image_path):
     return img[:, :, 0]  # Blue channel
 
 
-def stack_images(method="average"):
+def stack_images(session_dir, method="average"):
     """
-    Stacks the blue channels of all .jpg images in the capture directory.
-    method: 'average' or 'median'
+    Stacks the blue channels of all .jpg images in the session directory.
+    Saves final image as stacked_result.png.
     """
     images = []
-    for img_file in sorted(CAPTURE_DIR.glob("frame_*.jpg")):
+    for img_file in sorted(session_dir.glob("frame_*.jpg")):
         blue = extract_blue_channel(img_file)
         images.append(blue.astype(np.float32))
 
@@ -65,12 +70,13 @@ def stack_images(method="average"):
 
     stacked = np.clip(stacked, 0, 255).astype(np.uint8)
 
-    # Apply histogram equalization (CLAHE)
+    # Apply CLAHE for contrast enhancement
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(stacked)
 
-    cv2.imwrite(str(PROCESSED_IMAGE), enhanced)
-    return PROCESSED_IMAGE
+    result_path = session_dir / "stacked_result.png"
+    cv2.imwrite(str(result_path), enhanced)
+    return result_path
 
 
 @app.route("/")
@@ -84,23 +90,21 @@ def capture():
     frame_count = int(request.form["frames"])
     method = request.form.get("stack_method", "average")
 
-    # Convert to microseconds
     shutter_us = shutter_ms * 1000
+    session_dir = get_timestamped_dir()
 
-    # Clear previous captures
-    for f in CAPTURE_DIR.glob("frame_*.jpg"):
-        f.unlink()
-    for f in CAPTURE_DIR.glob("frame_*.jpg.raw"):
-        f.unlink()
+    capture_images(shutter_us, frame_count, session_dir)
+    result_path = stack_images(session_dir, method)
 
-    capture_images(shutter_us, frame_count)
-    result_path = stack_images(method)
-    return render_template("result.html", result_image=result_path.name)
+    return render_template("result.html", result_image=str(result_path.relative_to("static")), session_dir=str(session_dir.relative_to("static")))
 
 
-@app.route("/download")
-def download():
-    return send_file(PROCESSED_IMAGE, as_attachment=True)
+@app.route("/download/<path:session_dir>")
+def download(session_dir):
+    zip_path = f"{session_dir}.zip"
+    abs_dir = BASE_DIR / session_dir
+    shutil.make_archive(str(abs_dir), 'zip', str(abs_dir))
+    return send_file(f"static/captures/{zip_path}", as_attachment=True)
 
 
 if __name__ == "__main__":
