@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UV Camera Control</title>
+</head>
+<body>
+  <h1>UV Camera Controller</h1>
+  <form action="/capture" method="post">
+    <label>Shutter speed (ms):</label>
+    <input type="number" name="shutter" value="6000" min="100" max="6000" required><br><br>
+
+    <label>Number of frames:</label>
+    <input type="number" name="frames" value="10" min="1" max="30" required><br><br>
+
+    <label>Stacking method:</label>
+    <select name="stack_method">
+      <option value="average" selected>Average</option>
+      <option value="median">Median</option>
+    </select><br><br>
+
+    <button type="submit">Capture and Stack</button>
+  </form>
+</body>
+</html>
+
+
+# --------------------
+# File: templates/result.html
+# --------------------
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Stacked Result</title>
+</head>
+<body>
+  <h1>Stacked UV Image</h1>
+  <img src="/static/captures/{{ result_image }}" alt="Stacked Image" style="max-width:100%; height:auto;"><br><br>
+  <a href="/download"><button>Download Image</button></a><br><br>
+  <a href="/"><button>Back</button></a>
+</body>
+</html>
