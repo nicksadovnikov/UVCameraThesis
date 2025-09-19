@@ -45,8 +45,8 @@ def set_exposure_ms(exposure_ms: int):
 
 
 
-def capture_images(exposure_ms, frame_count, session_dir):
-    """Capture N grayscale frames and save as .dng with exposure in filename."""
+def capture_images(wavelength, exposure_ms, frame_count, save_dir):
+    """Capture N grayscale frames and save with regex-friendly filenames."""
     set_exposure_ms(exposure_ms)
 
     cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
@@ -59,17 +59,16 @@ def capture_images(exposure_ms, frame_count, session_dir):
         ret, frame = cam.read()
         if not ret:
             continue
-
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frames.append(gray)
 
-        frames.append(gray)   # keep as uint8
-
-        frame_path = session_dir / f"{exposure_ms}ms_frame_{i:03d}.dng"
-        tiff.imwrite(str(frame_path), gray.astype(np.uint8), photometric="minisblack")
-
+        filename = f"{wavelength}nm_{exposure_ms}ms_frame{i+1:03d}.dng"
+        filepath = save_dir / filename
+        tiff.imwrite(str(filepath), gray.astype(np.uint8), photometric="minisblack")
 
     cam.release()
     return frames
+
 
 
 def stack_images(frames, stack_dir, wavelength, exposure_ms):
