@@ -12,22 +12,25 @@
 <body>
   <h1>OV9281 Camera Controller</h1>
   <form action="/capture" method="post">
+
+    <label>Wavelength (nm):</label>
+    <input type="number" name="wavelength" value="365" min="200" max="900" required><br><br>
+
+    <label>Exposure (ms):</label><br>
+    <input type="range" name="shutter" min="1" max="500" value="50"
+           oninput="updateExposureValue(this.value)">
+    <span id="expVal">50 ms</span><br><br>
+
+    <label>Number of frames:</label>
+    <input type="number" name="frames" value="5" min="1" max="30" required><br><br>
+
     <label>Raw frames folder:</label>
     <input type="text" name="raw_dir" value="static/captures/all_data" required><br><br>
 
     <label>Stacked results folder:</label>
     <input type="text" name="stack_dir" value="static/captures/results" required><br><br>
-    <label>Exposure (ms):</label><br>
-    <input type="range" name="shutter" min="1" max="500" value="50"
-           oninput="updateExposureValue(this.value)">
-    <span id="expVal">50 ms</span>
-    <br><br>
-
-    <label>Number of frames:</label>
-    <input type="number" name="frames" value="5" min="1" max="30" required><br><br>
 
     <button type="submit">Capture & Stack</button>
   </form>
 </body>
 </html>
-
