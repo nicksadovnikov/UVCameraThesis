@@ -24,16 +24,25 @@ def get_timestamped_dir():
 
 def set_exposure_ms(exposure_ms: int):
     """
-    Set exposure in milliseconds for OV9281 via v4l2-ctl.
-    UVC 'exposure_absolute' unit = 100 µs.
+    Set manual exposure for OV9281.
+    - auto_exposure must be set to 1 for manual mode
+    - exposure_time_absolute is in units of 100 µs (1–5000)
     """
-    exposure_units = max(1, int(exposure_ms * 10))  # ms -> units of 100 µs
+    # Convert ms → 100 µs units
+    exposure_units = int(exposure_ms * 10)
+
+    # Clip to valid range
+    exposure_units = max(1, min(5000, exposure_units))
+
     subprocess.run(
         ["v4l2-ctl", "-d", "/dev/video0",
-         "-c", "exposure_auto=1",
-         "-c", f"exposure_absolute={exposure_units}"],
+         "-c", "auto_exposure=1",
+         "-c", f"exposure_time_absolute={exposure_units}"],
         check=True
     )
+
+    return exposure_units
+
 
 
 def capture_images(exposure_ms, frame_count, session_dir):

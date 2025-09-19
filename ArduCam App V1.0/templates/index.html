@@ -3,12 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <title>OV9281 Camera Control</title>
+  <script>
+    function updateExposureValue(val) {
+      document.getElementById('expVal').innerText = val + " ms";
+    }
+  </script>
 </head>
 <body>
   <h1>OV9281 Camera Controller</h1>
   <form action="/capture" method="post">
-    <label>Exposure (ms):</label>
-    <input type="number" name="shutter" value="50" min="1" max="1000" required><br><br>
+    <label>Exposure (ms):</label><br>
+    <input type="range" name="shutter" min="1" max="500" value="50"
+           oninput="updateExposureValue(this.value)">
+    <span id="expVal">50 ms</span>
+    <br><br>
 
     <label>Number of frames:</label>
     <input type="number" name="frames" value="5" min="1" max="30" required><br><br>
@@ -17,3 +25,4 @@
   </form>
 </body>
 </html>
+
