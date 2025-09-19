@@ -59,11 +59,14 @@ def capture_images(exposure_ms, frame_count, session_dir):
         ret, frame = cam.read()
         if not ret:
             continue
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frames.append(gray.astype(np.uint16))
+
+        frames.append(gray)   # keep as uint8
 
         frame_path = session_dir / f"{exposure_ms}ms_frame_{i:03d}.dng"
-        tiff.imwrite(str(frame_path), gray, photometric="minisblack")
+        tiff.imwrite(str(frame_path), gray.astype(np.uint8), photometric="minisblack")
+
 
     cam.release()
     return frames
@@ -71,15 +74,15 @@ def capture_images(exposure_ms, frame_count, session_dir):
 
 def stack_images(frames, session_dir, exposure_ms):
     """Average stack frames and save as .dng + preview .jpg with exposure in filename."""
-    stacked = np.mean(frames, axis=0).astype(np.uint16)
+    stacked = np.mean(frames, axis=0).astype(np.uint8)
 
     dng_path = session_dir / f"{exposure_ms}ms_stacked_result.dng"
     tiff.imwrite(str(dng_path), stacked, photometric="minisblack")
 
-    preview = cv2.normalize(stacked, None, 0, 255, cv2.NORM_MINMAX)
-    preview = preview.astype(np.uint8)
+    # Save JPEG preview (already 8-bit, just copy)
     preview_path = session_dir / f"{exposure_ms}ms_stacked_preview.jpg"
-    cv2.imwrite(str(preview_path), preview)
+    cv2.imwrite(str(preview_path), stacked)
+
 
     return dng_path, preview_path
 
