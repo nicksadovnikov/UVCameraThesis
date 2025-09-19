@@ -1,30 +1,113 @@
+import os
 import cv2
 import numpy as np
+import subprocess
+from flask import Flask, render_template, request, send_file
 from datetime import datetime
+from pathlib import Path
+import shutil
+import tifffile as tiff  # for saving .dng
 
-cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
-cam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'YUYV'))
-cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
-cam.set(cv2.CAP_PROP_FPS, 10)
+app = Flask(__name__)
 
-frames = []
-N = 10
-for i in range(N):
-    ret, frame = cam.read()
-    if not ret:
-        continue
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    frames.append(gray.astype(np.uint16))
+BASE_DIR = Path("static/captures")
+BASE_DIR.mkdir(parents=True, exist_ok=True)
 
-cam.release()
 
-# Stack
-stacked = np.mean(frames, axis=0).astype(np.uint16)
+def get_timestamped_dir():
+    """Create a new session folder with timestamp."""
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    session_dir = BASE_DIR / timestamp
+    session_dir.mkdir(parents=True, exist_ok=True)
+    return session_dir
 
-# Normalise so it's visible
-stacked_norm = cv2.normalize(stacked, None, 0, 65535, cv2.NORM_MINMAX)
 
-filename = f"stacked_{datetime.now():%Y%m%d_%H%M%S}.tiff"
-cv2.imwrite(filename, stacked_norm)
-print(f"✅ Saved stacked + normalized image to {filename}")
+def set_exposure_ms(exposure_ms: int):
+    """
+    Set exposure in milliseconds for OV9281 via v4l2-ctl.
+    UVC 'exposure_absolute' unit = 100 µs.
+    """
+    exposure_units = max(1, int(exposure_ms * 10))  # ms -> units of 100 µs
+    subprocess.run(
+        ["v4l2-ctl", "-d", "/dev/video0",
+         "-c", "exposure_auto=1",
+         "-c", f"exposure_absolute={exposure_units}"],
+        check=True
+    )
+
+
+def capture_images(exposure_ms, frame_count, session_dir):
+    """Capture N grayscale frames and save as .dng with exposure in filename."""
+    set_exposure_ms(exposure_ms)
+
+    cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
+    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
+    cam.set(cv2.CAP_PROP_FPS, 10)
+
+    frames = []
+    for i in range(frame_count):
+        ret, frame = cam.read()
+        if not ret:
+            continue
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frames.append(gray.astype(np.uint16))
+
+        frame_path = session_dir / f"{exposure_ms}ms_frame_{i:03d}.dng"
+        tiff.imwrite(str(frame_path), gray, photometric="minisblack")
+
+    cam.release()
+    return frames
+
+
+def stack_images(frames, session_dir, exposure_ms):
+    """Average stack frames and save as .dng + preview .jpg with exposure in filename."""
+    stacked = np.mean(frames, axis=0).astype(np.uint16)
+
+    dng_path = session_dir / f"{exposure_ms}ms_stacked_result.dng"
+    tiff.imwrite(str(dng_path), stacked, photometric="minisblack")
+
+    preview = cv2.normalize(stacked, None, 0, 255, cv2.NORM_MINMAX)
+    preview = preview.astype(np.uint8)
+    preview_path = session_dir / f"{exposure_ms}ms_stacked_preview.jpg"
+    cv2.imwrite(str(preview_path), preview)
+
+    return dng_path, preview_path
+
+
+
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/capture", methods=["POST"])
+def capture():
+    exposure_ms = int(request.form["shutter"])
+    frame_count = int(request.form["frames"])
+
+    session_dir = get_timestamped_dir()
+    frames = capture_images(exposure_ms, frame_count, session_dir)
+    dng_path, preview_path = stack_images(frames, session_dir, exposure_ms)
+
+    rel_preview = preview_path.relative_to("static")
+    rel_dir = session_dir.relative_to("static")
+
+    return render_template(
+        "result.html",
+        result_image=str(rel_preview),
+        session_dir=str(rel_dir)
+    )
+
+
+
+@app.route("/download/<path:session_dir>")
+def download(session_dir):
+    abs_dir = BASE_DIR / session_dir
+    zip_path = abs_dir.with_suffix(".zip")
+    shutil.make_archive(str(abs_dir), 'zip', str(abs_dir))
+    return send_file(zip_path, as_attachment=True)
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
