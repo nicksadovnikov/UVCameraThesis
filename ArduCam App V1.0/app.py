@@ -72,19 +72,19 @@ def capture_images(exposure_ms, frame_count, session_dir):
     return frames
 
 
-def stack_images(frames, session_dir, exposure_ms):
-    """Average stack frames and save as .dng + preview .jpg with exposure in filename."""
+def stack_images(frames, stack_dir, wavelength, exposure_ms):
     stacked = np.mean(frames, axis=0).astype(np.uint8)
 
-    dng_path = session_dir / f"{exposure_ms}ms_stacked_result.dng"
+    dng_name = f"{wavelength}nm_{exposure_ms}ms_stacked_result.dng"
+    dng_path = stack_dir / dng_name
     tiff.imwrite(str(dng_path), stacked, photometric="minisblack")
 
-    # Save JPEG preview (already 8-bit, just copy)
-    preview_path = session_dir / f"{exposure_ms}ms_stacked_preview.jpg"
+    preview_name = f"{wavelength}nm_{exposure_ms}ms_stacked_preview.jpg"
+    preview_path = stack_dir / preview_name
     cv2.imwrite(str(preview_path), stacked)
 
-
     return dng_path, preview_path
+
 
 
 
@@ -95,21 +95,35 @@ def index():
 
 @app.route("/capture", methods=["POST"])
 def capture():
+    wavelength = int(request.form["wavelength"])
     exposure_ms = int(request.form["shutter"])
     frame_count = int(request.form["frames"])
 
-    session_dir = get_timestamped_dir()
-    frames = capture_images(exposure_ms, frame_count, session_dir)
-    dng_path, preview_path = stack_images(frames, session_dir, exposure_ms)
+    raw_dir = Path(request.form["raw_dir"])
+    stack_base = Path(request.form["stack_dir"])
+
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    # Timestamped folder for stacked results
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    stack_dir = stack_base / timestamp
+    stack_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save frames into raw_dir
+    frames = capture_images(wavelength, exposure_ms, frame_count, raw_dir)
+
+    # Save stacked result into stack_dir
+    dng_path, preview_path = stack_images(frames, stack_dir, wavelength, exposure_ms)
 
     rel_preview = preview_path.relative_to("static")
-    rel_dir = session_dir.relative_to("static")
+    rel_stack_dir = stack_dir.relative_to("static")
 
     return render_template(
         "result.html",
         result_image=str(rel_preview),
-        session_dir=str(rel_dir)
+        session_dir=str(rel_stack_dir)
     )
+
 
 
 
