@@ -14,16 +14,17 @@ for i in range(N):
     ret, frame = cam.read()
     if not ret:
         continue
-    # OpenCV decodes YUYV into BGR, so extract grayscale
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     frames.append(gray.astype(np.uint16))
 
 cam.release()
 
-# Stack (mean)
+# Stack
 stacked = np.mean(frames, axis=0).astype(np.uint16)
 
-# Save as visible TIFF
+# Normalise so it's visible
+stacked_norm = cv2.normalize(stacked, None, 0, 65535, cv2.NORM_MINMAX)
+
 filename = f"stacked_{datetime.now():%Y%m%d_%H%M%S}.tiff"
-cv2.imwrite(filename, stacked)
-print(f"✅ Saved stacked grayscale image to {filename}")
+cv2.imwrite(filename, stacked_norm)
+print(f"✅ Saved stacked + normalized image to {filename}")
