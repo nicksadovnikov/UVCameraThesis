@@ -35,7 +35,7 @@ def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
 
 
 def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average"):
-    """Stack DNGs for data, use JPG for preview."""
+    """Stack DNGs for data, use JPG for full-res preview with red overlay from stacked DNG data."""
     images = []
     dng_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.dng"))
     jpg_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.jpg"))
@@ -68,7 +68,7 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     tiff_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.tiff"
     cv2.imwrite(str(tiff_path), stacked)
 
-    # --- Use JPG for preview instead of downsampled DNG ---
+    # --- Build preview from JPG ---
     if jpg_files:
         preview = cv2.imread(str(jpg_files[0]))
         if preview is None:
@@ -79,11 +79,18 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
         if preview.ndim == 2:
             preview = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
 
-    # Highlight saturated pixels (in grayscale reference)
-    gray_for_mask = cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY)
-    mask = gray_for_mask >= 250
+    # --- Red overlay from stacked DNG saturation ---
+    # Convert stacked 16-bit to 8-bit grayscale for saturation mask
+    stacked_preview = (stacked / 256).astype(np.uint8)
+    if stacked_preview.ndim == 3 and stacked_preview.shape[2] == 3:
+        stacked_preview_gray = cv2.cvtColor(stacked_preview, cv2.COLOR_BGR2GRAY)
+    else:
+        stacked_preview_gray = stacked_preview
+
+    mask = stacked_preview_gray >= 250
     preview[mask] = [0, 0, 255]
 
+    # Save final preview
     jpg_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
     cv2.imwrite(str(jpg_path), preview)
 
