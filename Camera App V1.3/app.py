@@ -80,14 +80,22 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
             preview = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
 
     # --- Red overlay from stacked DNG saturation ---
-    # Convert stacked 16-bit to 8-bit grayscale for saturation mask
     stacked_preview = (stacked / 256).astype(np.uint8)
+
+    # Collapse to grayscale if multi-channel
     if stacked_preview.ndim == 3 and stacked_preview.shape[2] == 3:
         stacked_preview_gray = cv2.cvtColor(stacked_preview, cv2.COLOR_BGR2GRAY)
     else:
         stacked_preview_gray = stacked_preview
 
-    mask = stacked_preview_gray >= 250
+    # Resize the mask to match preview dimensions
+    stacked_preview_resized = cv2.resize(
+        stacked_preview_gray,
+        (preview.shape[1], preview.shape[0]),  # (width, height)
+        interpolation=cv2.INTER_NEAREST
+    )
+
+    mask = stacked_preview_resized >= 250
     preview[mask] = [0, 0, 255]
 
     # Save final preview
