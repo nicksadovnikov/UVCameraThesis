@@ -65,13 +65,10 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     dng_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.dng"
     cv2.imwrite(str(dng_path), stacked)
 
-    # Create 8-bit preview for web
-    preview = (stacked / 256).astype(np.uint8)
-
-    # Highlight saturated pixels (≥ 250 in 8-bit scale)
-    mask = preview >= 250
-    preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
-    preview_bgr[mask] = [0, 0, 255]  # red overlay
+    # Create saturation-highlighted preview
+    saturated_mask = stacked >= 200  # True where pixels are clipped
+    preview = cv2.cvtColor(stacked, cv2.COLOR_GRAY2BGR)
+    preview[saturated_mask] = (0, 0, 255)  # mark clipped pixels in red
 
     jpg_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
     cv2.imwrite(str(jpg_path), preview_bgr)
