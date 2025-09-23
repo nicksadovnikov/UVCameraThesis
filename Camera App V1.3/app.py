@@ -48,6 +48,7 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     if not images:
         raise ValueError("No .dng frames found to stack.")
 
+    # Stack all frames
     if method == "average":
         stacked = np.mean(images, axis=0)
     elif method == "median":
@@ -55,6 +56,7 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     else:
         raise ValueError("Invalid stacking method")
 
+    # Clip and cast to 16-bit
     stacked = np.clip(stacked, 0, 65535).astype(np.uint16)
 
     # Timestamped result folder
@@ -62,22 +64,29 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     result_subdir = result_dir / timestamp
     result_subdir.mkdir(parents=True, exist_ok=True)
 
-    # Save stacked result as 16-bit TIFF (OpenCV does not support DNG writing)
+    # Save stacked result as 16-bit TIFF
     tiff_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.tiff"
     cv2.imwrite(str(tiff_path), stacked)
 
-    # Create 8-bit preview
+    # ----- Build 8-bit preview -----
     preview = (stacked / 256).astype(np.uint8)
+
+    # If stacked is 3-channel, collapse to grayscale first
+    if preview.ndim == 3 and preview.shape[2] == 3:
+        preview = cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY)
+
+    # Convert grayscale → BGR for red overlay
+    preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
 
     # Highlight saturated pixels (≥ 250 in 8-bit scale)
     mask = preview >= 250
-    preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
-    preview_bgr[mask] = [0, 0, 255]  # red overlay
+    preview_bgr[mask] = [0, 0, 255]
 
     jpg_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
     cv2.imwrite(str(jpg_path), preview_bgr)
 
     return jpg_path.relative_to("static")
+
 
 
 @app.route("/")
