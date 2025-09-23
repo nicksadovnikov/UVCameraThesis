@@ -1,24 +1,38 @@
-<form action="/capture" method="post">
-  <label>Wavelength (nm):</label>
-  <input type="number" name="wavelength" value="365" required><br><br>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>UV Camera Control</title>
+</head>
+<body>
+  <h1>UV Camera Controller</h1>
+  <form action="/capture" method="post">
+    <label>Wavelength (nm):</label>
+    <input type="number" name="wavelength" value="365" required><br><br>
 
-  <label>Shutter speed (ms):</label>
-  <input type="number" name="shutter" value="6000" min="1" max="6000" required><br><br>
+    <label>Shutter speed (ms):</label>
+    <input type="number" name="shutter" value="6000" min="1" max="6000" required><br><br>
 
-  <label>Number of frames:</label>
-  <input type="number" name="frames" value="10" min="1" max="30" required><br><br>
+    <label>Number of frames:</label>
+    <input type="number" name="frames" value="10" min="1" max="30" required><br><br>
 
-  <label>Stacking method:</label>
-  <select name="stack_method">
-    <option value="average" selected>Average</option>
-    <option value="median">Median</option>
-  </select><br><br>
+    <label>Stacking method:</label>
+    <select name="stack_method">
+      <option value="average" selected>Average</option>
+      <option value="median">Median</option>
+    </select><br><br>
 
-  <label>Frame folder (where raw .dng frames will go):</label>
-  <input type="text" name="frame_folder" value="static/raw_frames"><br><br>
+    <label>Frame folder (where raw .dng frames will go):</label><br>
+    <input type="text" name="frame_folder" 
+           value="static/captures/all_captures" 
+           style="width:400px"><br><br>
 
-  <label>Result folder (where stacked .dng + .jpg will go):</label>
-  <input type="text" name="result_folder" value="static/results"><br><br>
+    <label>Result folder (timestamped subfolder will be created here):</label><br>
+    <input type="text" name="result_folder" 
+           value="static/captures/results" 
+           style="width:400px"><br><br>
 
-  <button type="submit">Capture and Stack</button>
-</form>
+    <button type="submit">Capture and Stack</button>
+  </form>
+</body>
+</html>

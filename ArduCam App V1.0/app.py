@@ -5,8 +5,15 @@ from flask import Flask, render_template, request, send_file
 from pathlib import Path
 import subprocess
 import shutil
+from datetime import datetime
 
 app = Flask(__name__)
+
+# Default folders
+DEFAULT_FRAME_DIR = Path("static/captures/all_captures")
+DEFAULT_RESULTS_DIR = Path("static/captures/results")
+DEFAULT_FRAME_DIR.mkdir(parents=True, exist_ok=True)
+DEFAULT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
@@ -49,8 +56,13 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
 
     stacked = np.clip(stacked, 0, 65535).astype(np.uint16)
 
+    # Create timestamped result subfolder
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    result_subdir = result_dir / timestamp
+    result_subdir.mkdir(parents=True, exist_ok=True)
+
     # Save stacked result as 16-bit DNG
-    dng_path = result_dir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.dng"
+    dng_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.dng"
     cv2.imwrite(str(dng_path), stacked)
 
     # Create 8-bit preview for web
@@ -61,7 +73,7 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
     preview_bgr[mask] = [0, 0, 255]  # red overlay
 
-    jpg_path = result_dir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
+    jpg_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
     cv2.imwrite(str(jpg_path), preview_bgr)
 
     return jpg_path.relative_to("static")
@@ -79,16 +91,17 @@ def capture():
     frame_count = int(request.form["frames"])
     method = request.form.get("stack_method", "average")
 
-    frame_folder = Path(request.form["frame_folder"])
-    result_folder = Path(request.form["result_folder"])
+    # Use user-specified directories or defaults
+    frame_folder = Path(request.form["frame_folder"] or DEFAULT_FRAME_DIR)
+    result_folder = Path(request.form["result_folder"] or DEFAULT_RESULTS_DIR)
 
     frame_folder.mkdir(parents=True, exist_ok=True)
     result_folder.mkdir(parents=True, exist_ok=True)
 
-    # Capture frames into user-selected folder
+    # Capture frames into selected/all_captures folder
     capture_images(wavelength_nm, shutter_ms, frame_count, frame_folder)
 
-    # Stack and save results in user-selected folder
+    # Stack results into results/<timestamp>/
     result_rel = stack_images(wavelength_nm, shutter_ms, frame_folder, result_folder, method)
 
     return render_template(
@@ -100,9 +113,9 @@ def capture():
 
 @app.route("/download")
 def download():
-    """Bundle everything under static/ into a single zip for download"""
+    """Bundle everything under static/captures into a zip"""
     zip_path = "experiment_results.zip"
-    shutil.make_archive("experiment_results", 'zip', "static")
+    shutil.make_archive("experiment_results", 'zip', "static/captures")
     return send_file(zip_path, as_attachment=True)
 
 
