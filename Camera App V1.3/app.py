@@ -27,10 +27,11 @@ def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
             "libcamera-still",
             "--gain", "1",
             "--shutter", str(shutter_us),
-            "--raw",                  # ensures .dng is saved too
-            "-o", str(jpg_path),
+            "--codec", "dng",             # true full-res DNG
+            "-o", str(filepath),
             "-t", "1000"
         ]
+
         subprocess.run(cmd, check=True)
 
 
