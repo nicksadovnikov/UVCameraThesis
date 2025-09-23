@@ -110,12 +110,12 @@ def capture_images(wavelength, exposure_ms, frame_count, save_dir):
 
 
 def stack_images(frames, stack_dir, wavelength, exposure_ms, controls):
-    """Average frames, save stacked DNG and preview JPG with metadata."""
+    """Average frames, save stacked DNG, preview JPG, and highlight saturated pixels."""
     stacked = np.mean(frames, axis=0).astype(np.uint8)
 
+    # Save DNG with metadata
     dng_name = f"{wavelength}nm_{exposure_ms}ms_stacked_result.dng"
     dng_path = stack_dir / dng_name
-
     metadata = {
         "Wavelength_nm": wavelength,
         "Exposure_ms": exposure_ms,
@@ -123,14 +123,19 @@ def stack_images(frames, stack_dir, wavelength, exposure_ms, controls):
         "Timestamp": datetime.now().isoformat(),
         "CameraControls": controls
     }
-
     save_dng_with_metadata(dng_path, stacked, metadata)
+
+    # Create saturation-highlighted preview
+    saturated_mask = stacked >= 255  # True where pixels are clipped
+    preview = cv2.cvtColor(stacked, cv2.COLOR_GRAY2BGR)
+    preview[saturated_mask] = (0, 0, 255)  # mark clipped pixels in red
 
     preview_name = f"{wavelength}nm_{exposure_ms}ms_stacked_preview.jpg"
     preview_path = stack_dir / preview_name
-    cv2.imwrite(str(preview_path), stacked)
+    cv2.imwrite(str(preview_path), preview)
 
     return dng_path, preview_path
+
 
 
 @app.route("/")
