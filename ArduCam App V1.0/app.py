@@ -126,7 +126,7 @@ def stack_images(frames, stack_dir, wavelength, exposure_ms, controls):
     save_dng_with_metadata(dng_path, stacked, metadata)
 
     # Create saturation-highlighted preview
-    saturated_mask = stacked >= 253  # True where pixels are clipped
+    saturated_mask = stacked >= 200  # True where pixels are clipped
     preview = cv2.cvtColor(stacked, cv2.COLOR_GRAY2BGR)
     preview[saturated_mask] = (0, 0, 255)  # mark clipped pixels in red
 
