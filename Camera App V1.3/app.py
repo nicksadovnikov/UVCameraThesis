@@ -17,16 +17,17 @@ DEFAULT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
-    """Capture raw DNG frames with libcamera-still into the chosen folder"""
+    """Capture frames with libcamera-still.
+    Produces both .jpg and .dng (libcamera automatically creates .dng when --raw is used)."""
     shutter_us = shutter_ms * 1000
     for i in range(frame_count):
         base = f"{wavelength_nm}nm_{shutter_ms}ms_frame{i+1:03d}"
-        jpg_path = out_dir / f"{base}.jpg"   # must be .jpg for libcamera
+        jpg_path = out_dir / f"{base}.jpg"   # libcamera generates .jpg + .dng with same basename
         cmd = [
             "libcamera-still",
             "--gain", "1",
             "--shutter", str(shutter_us),
-            "--raw",              # ensures a .dng is also created
+            "--raw",                  # ensures .dng is saved too
             "-o", str(jpg_path),
             "-t", "1000"
         ]
@@ -34,7 +35,7 @@ def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
 
 
 def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average"):
-    """Stack only the DNG frames and save .dng + .jpg preview"""
+    """Stack only the DNG frames and save results as .tiff + .jpg (preview)."""
     images = []
     dng_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.dng"))
 
@@ -61,9 +62,9 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     result_subdir = result_dir / timestamp
     result_subdir.mkdir(parents=True, exist_ok=True)
 
-    # Save stacked result as DNG
-    dng_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.dng"
-    cv2.imwrite(str(dng_path), stacked)
+    # Save stacked result as 16-bit TIFF (OpenCV does not support DNG writing)
+    tiff_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.tiff"
+    cv2.imwrite(str(tiff_path), stacked)
 
     # Create 8-bit preview
     preview = (stacked / 256).astype(np.uint8)
