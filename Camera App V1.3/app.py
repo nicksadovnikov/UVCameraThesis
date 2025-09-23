@@ -20,21 +20,21 @@ def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
     """Capture raw DNG frames with libcamera-still into the chosen folder"""
     shutter_us = shutter_ms * 1000
     for i in range(frame_count):
-        filename = f"{wavelength_nm}nm_{shutter_ms}ms_frame{i+1:03d}.dng"
-        filepath = out_dir / filename
+        base = f"{wavelength_nm}nm_{shutter_ms}ms_frame{i+1:03d}"
+        jpg_path = out_dir / f"{base}.jpg"   # must be .jpg for libcamera
         cmd = [
             "libcamera-still",
             "--gain", "1",
             "--shutter", str(shutter_us),
-            "--raw", "--encoding=raw",
-            "-o", str(filepath),
+            "--raw",              # ensures a .dng is also created
+            "-o", str(jpg_path),
             "-t", "1000"
         ]
         subprocess.run(cmd, check=True)
 
 
 def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average"):
-    """Stack raw frames and save both .dng and .jpg (with red saturation highlighting)"""
+    """Stack only the DNG frames and save .dng + .jpg preview"""
     images = []
     dng_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.dng"))
 
@@ -45,7 +45,7 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
         images.append(raw.astype(np.float32))
 
     if not images:
-        raise ValueError("No frames captured to stack.")
+        raise ValueError("No .dng frames found to stack.")
 
     if method == "average":
         stacked = np.mean(images, axis=0)
@@ -56,16 +56,16 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
 
     stacked = np.clip(stacked, 0, 65535).astype(np.uint16)
 
-    # Create timestamped result subfolder
+    # Timestamped result folder
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     result_subdir = result_dir / timestamp
     result_subdir.mkdir(parents=True, exist_ok=True)
 
-    # Save stacked result as 16-bit DNG
+    # Save stacked result as DNG
     dng_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.dng"
     cv2.imwrite(str(dng_path), stacked)
 
-    # Create 8-bit preview for web
+    # Create 8-bit preview
     preview = (stacked / 256).astype(np.uint8)
 
     # Highlight saturated pixels (≥ 250 in 8-bit scale)
