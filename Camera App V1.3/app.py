@@ -35,10 +35,12 @@ def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
 
 
 def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average"):
-    """Stack only the DNG frames and save results as .tiff + .jpg (preview)."""
+    """Stack DNGs for data, use JPG for preview."""
     images = []
     dng_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.dng"))
+    jpg_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.jpg"))
 
+    # --- Stack RAW DNGs ---
     for f in dng_files:
         raw = cv2.imread(str(f), cv2.IMREAD_UNCHANGED)
         if raw is None:
@@ -48,7 +50,6 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     if not images:
         raise ValueError("No .dng frames found to stack.")
 
-    # Stack all frames
     if method == "average":
         stacked = np.mean(images, axis=0)
     elif method == "median":
@@ -56,7 +57,6 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     else:
         raise ValueError("Invalid stacking method")
 
-    # Clip and cast to 16-bit
     stacked = np.clip(stacked, 0, 65535).astype(np.uint16)
 
     # Timestamped result folder
@@ -64,28 +64,31 @@ def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average
     result_subdir = result_dir / timestamp
     result_subdir.mkdir(parents=True, exist_ok=True)
 
-    # Save stacked result as 16-bit TIFF
+    # Save stacked result as 16-bit TIFF (scientific data)
     tiff_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.tiff"
     cv2.imwrite(str(tiff_path), stacked)
 
-    # ----- Build 8-bit preview -----
-    preview = (stacked / 256).astype(np.uint8)
+    # --- Use JPG for preview instead of downsampled DNG ---
+    if jpg_files:
+        preview = cv2.imread(str(jpg_files[0]))
+        if preview is None:
+            raise ValueError("Could not read preview JPG.")
+    else:
+        # fallback: grayscale preview from stacked
+        preview = (stacked / 256).astype(np.uint8)
+        if preview.ndim == 2:
+            preview = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
 
-    # If stacked is 3-channel, collapse to grayscale first
-    if preview.ndim == 3 and preview.shape[2] == 3:
-        preview = cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY)
-
-    # Convert grayscale → BGR for red overlay
-    preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
-
-    # Highlight saturated pixels (≥ 250 in 8-bit scale)
-    mask = preview >= 250
-    preview_bgr[mask] = [0, 0, 255]
+    # Highlight saturated pixels (in grayscale reference)
+    gray_for_mask = cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY)
+    mask = gray_for_mask >= 250
+    preview[mask] = [0, 0, 255]
 
     jpg_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
-    cv2.imwrite(str(jpg_path), preview_bgr)
+    cv2.imwrite(str(jpg_path), preview)
 
     return jpg_path.relative_to("static")
+
 
 
 
