@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 import tifffile as tiff  # for saving .dng
+import json
 
 app = Flask(__name__)
 
@@ -30,8 +31,6 @@ def set_exposure_ms(exposure_ms: int):
     """
     # Convert ms → 100 µs units
     exposure_units = int(exposure_ms * 10)
-
-    # Clip to valid range
     exposure_units = max(1, min(5000, exposure_units))
 
     subprocess.run(
@@ -44,10 +43,40 @@ def set_exposure_ms(exposure_ms: int):
     return exposure_units
 
 
+def get_camera_controls():
+    """
+    Query v4l2 controls and return as a dictionary {control: value}.
+    """
+    result = subprocess.run(
+        ["v4l2-ctl", "-d", "/dev/video0", "--list-ctrls"],
+        capture_output=True, text=True, check=True
+    )
+    controls = {}
+    for line in result.stdout.splitlines():
+        if "value=" in line:
+            key = line.strip().split()[0]
+            value_str = line.split("value=")[-1].split()[0]
+            controls[key] = value_str
+    return controls
+
+
+def save_dng_with_metadata(filepath: Path, image: np.ndarray, metadata: dict):
+    """
+    Save grayscale image as .dng with metadata JSON embedded in ImageDescription.
+    """
+    description = json.dumps(metadata, indent=2)
+    tiff.imwrite(
+        str(filepath),
+        image.astype(np.uint8),
+        photometric="minisblack",
+        description=description
+    )
+
 
 def capture_images(wavelength, exposure_ms, frame_count, save_dir):
-    """Capture N grayscale frames and save with regex-friendly filenames."""
-    set_exposure_ms(exposure_ms)
+    """Capture N grayscale frames and save with metadata embedded."""
+    exposure_units = set_exposure_ms(exposure_ms)
+    controls = get_camera_controls()
 
     cam = cv2.VideoCapture(0, cv2.CAP_V4L2)
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -64,27 +93,44 @@ def capture_images(wavelength, exposure_ms, frame_count, save_dir):
 
         filename = f"{wavelength}nm_{exposure_ms}ms_frame{i+1:03d}.dng"
         filepath = save_dir / filename
-        tiff.imwrite(str(filepath), gray.astype(np.uint8), photometric="minisblack")
+
+        metadata = {
+            "Wavelength_nm": wavelength,
+            "Exposure_ms": exposure_ms,
+            "Exposure_units_100us": exposure_units,
+            "FrameIndex": i + 1,
+            "Timestamp": datetime.now().isoformat(),
+            "CameraControls": controls
+        }
+
+        save_dng_with_metadata(filepath, gray, metadata)
 
     cam.release()
-    return frames
+    return frames, controls
 
 
-
-def stack_images(frames, stack_dir, wavelength, exposure_ms):
+def stack_images(frames, stack_dir, wavelength, exposure_ms, controls):
+    """Average frames, save stacked DNG and preview JPG with metadata."""
     stacked = np.mean(frames, axis=0).astype(np.uint8)
 
     dng_name = f"{wavelength}nm_{exposure_ms}ms_stacked_result.dng"
     dng_path = stack_dir / dng_name
-    tiff.imwrite(str(dng_path), stacked, photometric="minisblack")
+
+    metadata = {
+        "Wavelength_nm": wavelength,
+        "Exposure_ms": exposure_ms,
+        "FrameCount": len(frames),
+        "Timestamp": datetime.now().isoformat(),
+        "CameraControls": controls
+    }
+
+    save_dng_with_metadata(dng_path, stacked, metadata)
 
     preview_name = f"{wavelength}nm_{exposure_ms}ms_stacked_preview.jpg"
     preview_path = stack_dir / preview_name
     cv2.imwrite(str(preview_path), stacked)
 
     return dng_path, preview_path
-
-
 
 
 @app.route("/")
@@ -100,19 +146,17 @@ def capture():
 
     raw_dir = Path(request.form["raw_dir"])
     stack_base = Path(request.form["stack_dir"])
-
     raw_dir.mkdir(parents=True, exist_ok=True)
 
-    # Timestamped folder for stacked results
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     stack_dir = stack_base / timestamp
     stack_dir.mkdir(parents=True, exist_ok=True)
 
-    # Save frames into raw_dir
-    frames = capture_images(wavelength, exposure_ms, frame_count, raw_dir)
+    # Capture raw frames with metadata
+    frames, controls = capture_images(wavelength, exposure_ms, frame_count, raw_dir)
 
-    # Save stacked result into stack_dir
-    dng_path, preview_path = stack_images(frames, stack_dir, wavelength, exposure_ms)
+    # Save stacked frame with metadata
+    dng_path, preview_path = stack_images(frames, stack_dir, wavelength, exposure_ms, controls)
 
     rel_preview = preview_path.relative_to("static")
     rel_stack_dir = stack_dir.relative_to("static")
@@ -122,8 +166,6 @@ def capture():
         result_image=str(rel_preview),
         session_dir=str(rel_stack_dir)
     )
-
-
 
 
 @app.route("/download/<path:session_dir>")
