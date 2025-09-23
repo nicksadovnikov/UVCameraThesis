@@ -2,69 +2,81 @@ import os
 import cv2
 import numpy as np
 from flask import Flask, render_template, request, send_file
-from datetime import datetime
-import subprocess
 from pathlib import Path
+import subprocess
 import shutil
+from datetime import datetime
 
 app = Flask(__name__)
 
-BASE_DIR = Path("static/captures")
-BASE_DIR.mkdir(parents=True, exist_ok=True)
+# Default folders
+DEFAULT_FRAME_DIR = Path("static/captures/all_captures")
+DEFAULT_RESULTS_DIR = Path("static/captures/results")
+DEFAULT_FRAME_DIR.mkdir(parents=True, exist_ok=True)
+DEFAULT_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_timestamped_dir():
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    session_dir = BASE_DIR / timestamp
-    session_dir.mkdir(parents=True, exist_ok=True)
-    return session_dir
-
-
-def capture_images(shutter_us, frame_count, session_dir):
+def capture_images(wavelength_nm, shutter_ms, frame_count, out_dir):
+    """Capture raw DNG frames with libcamera-still into the chosen folder"""
+    shutter_us = shutter_ms * 1000
     for i in range(frame_count):
-        filename = f"frame_{i:03d}.jpg"
-        filepath = session_dir / filename
+        filename = f"{wavelength_nm}nm_{shutter_ms}ms_frame{i+1:03d}.dng"
+        filepath = out_dir / filename
         cmd = [
             "libcamera-still",
-            f"--shutter", str(shutter_us),
             "--gain", "1",
-            "--raw",
+            "--shutter", str(shutter_us),
+            "--raw", "--encoding=raw",
             "-o", str(filepath),
             "-t", "1000"
         ]
         subprocess.run(cmd, check=True)
 
 
-def extract_blue_channel(image_path):
-    img = cv2.imread(str(image_path))
-    if img is None:
-        raise ValueError(f"Could not read image: {image_path}")
-    return img[:, :, 0]
-
-
-def stack_images(session_dir, method="average"):
+def stack_images(wavelength_nm, shutter_ms, raw_dir, result_dir, method="average"):
+    """Stack raw frames and save both .dng and .jpg (with red saturation highlighting)"""
     images = []
-    for img_file in sorted(session_dir.glob("frame_*.jpg")):
-        blue = extract_blue_channel(img_file)
-        images.append(blue.astype(np.float32))
+    dng_files = sorted(raw_dir.glob(f"{wavelength_nm}nm_{shutter_ms}ms_frame*.dng"))
+
+    for f in dng_files:
+        raw = cv2.imread(str(f), cv2.IMREAD_UNCHANGED)
+        if raw is None:
+            continue
+        images.append(raw.astype(np.float32))
 
     if not images:
-        raise ValueError("No images found to stack.")
+        raise ValueError("No frames captured to stack.")
 
     if method == "average":
         stacked = np.mean(images, axis=0)
     elif method == "median":
         stacked = np.median(np.array(images), axis=0)
     else:
-        raise ValueError("Invalid stacking method.")
+        raise ValueError("Invalid stacking method")
 
-    stacked = np.clip(stacked, 0, 255).astype(np.uint8)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    enhanced = clahe.apply(stacked)
+    stacked = np.clip(stacked, 0, 65535).astype(np.uint16)
 
-    result_path = session_dir / "stacked_result.png"
-    cv2.imwrite(str(result_path), enhanced)
-    return result_path
+    # Create timestamped result subfolder
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    result_subdir = result_dir / timestamp
+    result_subdir.mkdir(parents=True, exist_ok=True)
+
+    # Save stacked result as 16-bit DNG
+    dng_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.dng"
+    cv2.imwrite(str(dng_path), stacked)
+
+    # Create 8-bit preview for web
+    preview = (stacked / 256).astype(np.uint8)
+
+    # Highlight saturated pixels (≥ 250 in 8-bit scale)
+    mask = preview >= 250
+    preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
+    preview_bgr[mask] = [0, 0, 255]  # red overlay
+
+    jpg_path = result_subdir / f"{wavelength_nm}nm_{shutter_ms}ms_stacked.jpg"
+    cv2.imwrite(str(jpg_path), preview_bgr)
+
+    return jpg_path.relative_to("static")
 
 
 @app.route("/")
@@ -74,27 +86,36 @@ def index():
 
 @app.route("/capture", methods=["POST"])
 def capture():
+    wavelength_nm = int(request.form["wavelength"])
     shutter_ms = int(request.form["shutter"])
     frame_count = int(request.form["frames"])
     method = request.form.get("stack_method", "average")
 
-    shutter_us = shutter_ms * 1000
-    session_dir = get_timestamped_dir()
+    # Use user-specified directories or defaults
+    frame_folder = Path(request.form["frame_folder"] or DEFAULT_FRAME_DIR)
+    result_folder = Path(request.form["result_folder"] or DEFAULT_RESULTS_DIR)
 
-    capture_images(shutter_us, frame_count, session_dir)
-    result_path = stack_images(session_dir, method)
+    frame_folder.mkdir(parents=True, exist_ok=True)
+    result_folder.mkdir(parents=True, exist_ok=True)
 
-    rel_result = result_path.relative_to("static")
-    rel_dir = session_dir.relative_to("static")
+    # Capture frames into selected/all_captures folder
+    capture_images(wavelength_nm, shutter_ms, frame_count, frame_folder)
 
-    return render_template("result.html", result_image=str(rel_result), session_dir=str(rel_dir))
+    # Stack results into results/<timestamp>/
+    result_rel = stack_images(wavelength_nm, shutter_ms, frame_folder, result_folder, method)
+
+    return render_template(
+        "result.html",
+        result_image=str(result_rel),
+        session_dir=str(result_folder)
+    )
 
 
-@app.route("/download/<path:session_dir>")
-def download(session_dir):
-    abs_dir = BASE_DIR / session_dir
-    zip_path = abs_dir.with_suffix(".zip")
-    shutil.make_archive(str(abs_dir), 'zip', str(abs_dir))
+@app.route("/download")
+def download():
+    """Bundle everything under static/captures into a zip"""
+    zip_path = "experiment_results.zip"
+    shutil.make_archive("experiment_results", 'zip', "static/captures")
     return send_file(zip_path, as_attachment=True)
 
 

@@ -2,35 +2,37 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>OV9281 Camera Control</title>
-  <script>
-    function updateExposureValue(val) {
-      document.getElementById('expVal').innerText = val + " ms";
-    }
-  </script>
+  <title>UV Camera Control</title>
 </head>
 <body>
-  <h1>OV9281 Camera Controller</h1>
+  <h1>UV Camera Controller</h1>
   <form action="/capture" method="post">
-
     <label>Wavelength (nm):</label>
-    <input type="number" name="wavelength" value="365" min="200" max="900" required><br><br>
+    <input type="number" name="wavelength" value="365" required><br><br>
 
-    <label>Exposure (ms):</label><br>
-    <input type="range" name="shutter" min="1" max="500" value="50"
-           oninput="updateExposureValue(this.value)">
-    <span id="expVal">50 ms</span><br><br>
+    <label>Shutter speed (ms):</label>
+    <input type="number" name="shutter" value="6000" min="1" max="6000" required><br><br>
 
     <label>Number of frames:</label>
-    <input type="number" name="frames" value="5" min="1" max="30" required><br><br>
+    <input type="number" name="frames" value="10" min="1" max="30" required><br><br>
 
-    <label>Raw frames folder:</label>
-    <input type="text" name="raw_dir" value="static/captures/all_data" required><br><br>
+    <label>Stacking method:</label>
+    <select name="stack_method">
+      <option value="average" selected>Average</option>
+      <option value="median">Median</option>
+    </select><br><br>
 
-    <label>Stacked results folder:</label>
-    <input type="text" name="stack_dir" value="static/captures/results" required><br><br>
+    <label>Frame folder (where raw .dng frames will go):</label><br>
+    <input type="text" name="frame_folder" 
+           value="static/captures/all_captures" 
+           style="width:400px"><br><br>
 
-    <button type="submit">Capture & Stack</button>
+    <label>Result folder (timestamped subfolder will be created here):</label><br>
+    <input type="text" name="result_folder" 
+           value="static/captures/results" 
+           style="width:400px"><br><br>
+
+    <button type="submit">Capture and Stack</button>
   </form>
 </body>
 </html>
